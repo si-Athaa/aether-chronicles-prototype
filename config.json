@@ -1,0 +1,27 @@
+{
+  "gameSettings": {
+    "gravity": -9.8,
+    "maxEntities": 50
+  },
+  "player": {
+    "baseHp": 1000,
+    "baseSpeed": 10,
+    "dashForce": 50,
+    "jumpForce": 15,
+    "aetherRegenRate": 2.5
+  },
+  "auras": {
+    "fire": {
+      "color": "#FF4500",
+      "damageMult": 1.5,
+      "projectileSpeed": 20,
+      "cooldowns": { "skill": 5, "ultimate": 60 }
+    },
+    "wind": {
+      "color": "#00CED1",
+      "damageMult": 0.8,
+      "moveSpeedMult": 1.3,
+      "cooldowns": { "skill": 3, "ultimate": 45 }
+    }
+  }
+}
