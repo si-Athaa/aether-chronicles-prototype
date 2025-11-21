@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Aether Chronicles Prototype</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Arial', sans-serif; }
+        #ui-layer {
+            position: absolute; top: 20px; left: 20px; color: white;
+            text-shadow: 2px 2px 0 #000; pointer-events: none;
+        }
+        .bar-container { width: 200px; height: 20px; background: #333; margin-bottom: 5px; border: 2px solid white; }
+        .bar-fill { height: 100%; transition: width 0.2s; }
+        #hp-bar { background: #ff3333; width: 100%; }
+        #mana-bar { background: #33ccff; width: 100%; }
+        #controls { position: absolute; bottom: 20px; left: 20px; color: white; font-size: 12px; opacity: 0.7; }
+    </style>
+</head>
+<body>
+
+<div id="ui-layer">
+    <h3>AETHER CHRONICLES</h3>
+    <div class="bar-container"><div id="hp-bar" class="bar-fill"></div></div>
+    <div class="bar-container"><div id="mana-bar" class="bar-fill"></div></div>
+    <div id="aura-text">Current Aura: ENHANCEMENT</div>
+</div>
+
+<div id="controls">
+    WASD: Move | SPACE: Jump | SHIFT: Dash | CLICK: Attack | 1-3: Change Aura
+</div>
+
+<script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+    }
+  }
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+// --- CONFIGURATION ---
+const CONFIG = {
+    speed: 0.5,
+    dashSpeed: 2.0,
+    jumpForce: 0.8,
+    gravity: 0.05,
+    auras: {
+        1: { name: "ENHANCEMENT (Phys)", color: 0xffff00 },
+        2: { name: "FIRE (Burst)", color: 0xff4500 },
+        3: { name: "WIND (Speed)", color: 0x00ced1 }
+    }
+};
+
+// --- SETUP ---
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87CEEB); // Sky blue
+scene.fog = new THREE.Fog(0x87CEEB, 10, 50);
+
+const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.shadowMap.enabled = true; // Enable shadows
+document.body.appendChild(renderer.domElement);
+
+// --- LIGHTING (Cel-shade style requires strong directional light) ---
+const ambientLight = new THREE.AmbientLight(0x404040, 0.6); // Soft white light
+scene.add(ambientLight);
+
+const dirLight = new THREE.DirectionalLight(0xffffff, 1);
+dirLight.position.set(10, 20, 10);
+dirLight.castShadow = true;
+scene.add(dirLight);
+
+// --- ENVIRONMENT ---
+const groundGeo = new THREE.PlaneGeometry(100, 100);
+const groundMat = new THREE.MeshStandardMaterial({ color: 0x228B22 });
+const ground = new THREE.Mesh(groundGeo, groundMat);
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+// Add some dummy enemies
+const enemyGeo = new THREE.CapsuleGeometry(0.5, 1, 4, 8);
+const enemyMat = new THREE.MeshStandardMaterial({ color: 0x8B0000 });
+const enemy = new THREE.Mesh(enemyGeo, enemyMat);
+enemy.position.set(5, 1, -5);
+enemy.castShadow = true;
+scene.add(enemy);
+
+// --- PLAYER ---
+const playerGeo = new THREE.BoxGeometry(1, 1, 1);
+const playerMat = new THREE.MeshStandardMaterial({ color: 0xffff00 }); // Starts yellow (Enhancement)
+const player = new THREE.Mesh(playerGeo, playerMat);
+player.position.y = 1;
+player.castShadow = true;
+scene.add(player);
+
+// Aura Glow Effect (Point Light attached to player)
+const auraLight = new THREE.PointLight(0xffff00, 2, 10);
+player.add(auraLight);
+
+// --- GAME STATE ---
+let velocity = new THREE.Vector3();
+let isGrounded = false;
+let canDoubleJump = false;
+let isDashing = false;
+let currentAura = 1;
+let mana = 100;
+
+// Inputs
+const keys = { w: false, a: false, s: false, d: false };
+
+window.addEventListener('keydown', (e) => {
+    const key = e.key.toLowerCase();
+    if (keys.hasOwnProperty(key)) keys[key] = true;
+    
+    // Jump
+    if (e.code === 'Space') {
+        if (isGrounded) {
+            velocity.y = CONFIG.jumpForce;
+            isGrounded = false;
+            canDoubleJump = true;
+        } else if (canDoubleJump) {
+            velocity.y = CONFIG.jumpForce;
+            canDoubleJump = false;
+            // Create jump particle visual (simple logic)
+            console.log("Double Jump!");
+        }
+    }
+
+    // Dash
+    if (e.key === 'Shift' && !isDashing && mana > 10) {
+        startDash();
+    }
+
+    // Aura Switching
+    if (CONFIG.auras[e.key]) {
+        switchAura(e.key);
+    }
+});
+
+window.addEventListener('keyup', (e) => {
+    const key = e.key.toLowerCase();
+    if (keys.hasOwnProperty(key)) keys[key] = false;
+});
+
+window.addEventListener('mousedown', () => {
+    // Basic Attack logic
+    performAttack();
+});
+
+// --- MECHANICS ---
+
+function switchAura(key) {
+    currentAura = key;
+    const aura = CONFIG.auras[key];
+    
+    // Update Visuals
+    player.material.color.setHex(aura.color);
+    auraLight.color.setHex(aura.color);
+    document.getElementById('aura-text').innerText = "Current Aura: " + aura.name;
+    document.getElementById('aura-text').style.color = "#" + aura.color.toString(16);
+}
+
+function startDash() {
+    isDashing = true;
+    mana -= 20; // Mana Cost
+    updateUI();
+    
+    // Dash visuals could go here (trail renderer)
+    
+    setTimeout(() => {
+        isDashing = false;
+    }, 200); // Dash lasts 200ms
+}
+
+function performAttack() {
+    // Simple animation punch
+    player.scale.z = 1.5; // Stretch mesh to simulate punch
+    setTimeout(() => player.scale.z = 1, 100);
+    
+    // Check distance to enemy (Simple Hitbox)
+    if (player.position.distanceTo(enemy.position) < 2.5) {
+        console.log("Hit Enemy!");
+        enemy.material.color.setHex(0xffffff); // Flash white
+        setTimeout(() => enemy.material.color.setHex(0x8B0000), 100);
+        
+        // Floating text logic would go here
+        createDamageNumber(enemy.position);
+    }
+}
+
+function createDamageNumber(pos) {
+    // In raw Three.js, text is heavy. 
+    // In a real game, use a sprite sheet or HTML overlay mapped to 3D coords.
+    console.log(`Damage dealt at ${pos.x}, ${pos.z}`);
+}
+
+function updateUI() {
+    document.getElementById('mana-bar').style.width = mana + "%";
+}
+
+// --- LOOP ---
+function animate() {
+    requestAnimationFrame(animate);
+
+    // 1. Movement Logic
+    if (!isDashing) {
+        if (keys.w) player.translateZ(-CONFIG.speed);
+        if (keys.s) player.translateZ(CONFIG.speed);
+        if (keys.a) player.translateX(-CONFIG.speed);
+        if (keys.d) player.translateX(CONFIG.speed);
+    } else {
+        // Dash moves player forward rapidly
+        player.translateZ(-CONFIG.dashSpeed);
+    }
+
+    // 2. Physics (Gravity)
+    if (player.position.y > 1) {
+        velocity.y -= CONFIG.gravity;
+        isGrounded = false;
+    } else {
+        velocity.y = 0;
+        player.position.y = 1;
+        isGrounded = true;
+    }
+    player.position.y += velocity.y;
+
+    // 3. Camera Follow
+    camera.position.set(player.position.x, player.position.y + 5, player.position.z + 10);
+    camera.lookAt(player.position);
+
+    // 4. Mana Regen
+    if (mana < 100) {
+        mana += 0.1;
+        updateUI();
+    }
+
+    renderer.render(scene, camera);
+}
+
+animate();
+
+// Handle Resize
+window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+</script>
+</body>
+</html>
